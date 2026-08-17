@@ -11,7 +11,7 @@ Tiny macOS menu bar app showing SoC temperature with a live 5‑minute chart. Pu
 ## Workflow
 - Build + install + relaunch:
   `./build.sh && pkill -x TempBar; rm -rf /Applications/TempBar.app && cp -R TempBar.app /Applications/ && open /Applications/TempBar.app`
-- App lives in `/Applications`; "Launch at Login" toggle in the dropdown uses `SMAppService.mainApp` (state shown as checkmark, read on menu open).
+- App lives in `/Applications`. "Launch at Login" is a custom-drawn `Toggle` view (NSSwitch does not paint its accent tint inside menus on macOS 26; SMAppService.status is unreliable for ad-hoc signed apps). Login item state is read/written via System Events AppleScript, matching what System Settings shows.
 - Sensor probing/reading needs to run outside the sandbox.
 
 ## Facts learned

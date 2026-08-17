@@ -1,5 +1,4 @@
 import AppKit
-import ServiceManagement
 
 final class Panel: NSView {
   var history: [Double] = []
@@ -78,11 +77,28 @@ final class Panel: NSView {
   }
 }
 
+/// Custom toggle: NSSwitch does not paint its accent tint inside menu-item views on recent macOS,
+/// so we draw a look-alike ourselves.
+final class Toggle: NSView {
+  var isOn = false { didSet { needsDisplay = true } }
+  var onChange: ((Bool) -> Void)?
+  override var intrinsicContentSize: NSSize { NSSize(width: 38, height: 22) }
+  override func mouseDown(with e: NSEvent) { isOn.toggle(); onChange?(isOn) }
+  override func draw(_ r: NSRect) {
+    let track = NSBezierPath(roundedRect: bounds, xRadius: bounds.height/2, yRadius: bounds.height/2)
+    (isOn ? NSColor.controlAccentColor : NSColor.tertiaryLabelColor.withAlphaComponent(0.35)).setFill(); track.fill()
+    let d = bounds.height - 4
+    let x = isOn ? bounds.width - d - 2 : 2
+    let knob = NSBezierPath(ovalIn: NSRect(x: x, y: 2, width: d, height: d))
+    NSColor.white.setFill(); knob.fill()
+  }
+}
+
 final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   let menu = NSMenu()
   let panel = Panel(frame: NSRect(x: 0, y: 0, width: 260, height: 168))
-  let loginSwitch = NSSwitch()
+  let loginSwitch = Toggle(frame: NSRect(x: 0, y: 0, width: 38, height: 22))
   let loginLabel = NSTextField(labelWithString: "Launch at Login")
   var history: [Double] = []
   var timer: Timer?
@@ -94,37 +110,44 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let row = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
     let label = loginLabel
     label.font = .systemFont(ofSize: 13); label.frame = NSRect(x: 14, y: 7, width: 190, height: 17)
-    loginSwitch.controlSize = .small; loginSwitch.sizeToFit()
     loginSwitch.frame.origin = CGPoint(x: 260 - 14 - loginSwitch.frame.width, y: (30 - loginSwitch.frame.height) / 2)
-    loginSwitch.target = self; loginSwitch.action = #selector(toggleLogin(_:))
+    loginSwitch.onChange = { [weak self] on in self?.setLogin(on) }
     row.addSubview(label); row.addSubview(loginSwitch)
     let login = NSMenuItem(); login.view = row
     menu.addItem(login)
     menu.delegate = self
     menu.addItem(NSMenuItem(title: "Quit TempBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     item.menu = menu
+    syncLoginUI()
     refresh()
     timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.refresh() }
     timer?.tolerance = 1
     RunLoop.main.add(timer!, forMode: .common)  // keep ticking while menu is open
   }
 
-  @objc func toggleLogin(_ sender: NSSwitch) {
-    do {
-      if sender.state == .on { try SMAppService.mainApp.register() }
-      else { try SMAppService.mainApp.unregister() }
-    } catch { NSSound.beep() }
+  // Login item handled via System Events (same list System Settings shows).
+  // SMAppService.status is unreliable for ad-hoc signed apps, so we use the visible list as the source of truth.
+  func runAS(_ src: String) -> String? {
+    var err: NSDictionary?
+    let out = NSAppleScript(source: src)?.executeAndReturnError(&err)
+    return err == nil ? (out?.stringValue ?? "") : nil
+  }
+  var loginEnabled: Bool {
+    runAS(#"tell application "System Events" to return (name of every login item) contains "TempBar""#) == "true"
+  }
+  func setLogin(_ on: Bool) {
+    let path = Bundle.main.bundlePath
+    if on {
+      _ = runAS("tell application \"System Events\" to make login item at end with properties {path:\"\(path)\", hidden:true}")
+    } else {
+      _ = runAS(#"tell application "System Events" to delete (every login item whose name is "TempBar")"#)
+    }
     syncLoginUI()
-    if SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
   }
 
-  func syncLoginUI() {
-    let st = SMAppService.mainApp.status
-    loginSwitch.state = (st == .enabled || st == .requiresApproval) ? .on : .off
-    loginLabel.stringValue = st == .requiresApproval ? "Launch at Login (approve in Settings)" : "Launch at Login"
-  }
+  func syncLoginUI() { loginSwitch.isOn = loginEnabled }
 
-  func menuNeedsUpdate(_ menu: NSMenu) { syncLoginUI() }
+  func menuWillOpen(_ menu: NSMenu) { syncLoginUI() }
 
   func refresh() {
     guard let s = Summary.current() else { item.button?.title = "--°"; return }
