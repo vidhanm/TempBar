@@ -82,6 +82,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   let menu = NSMenu()
   let panel = Panel(frame: NSRect(x: 0, y: 0, width: 260, height: 168))
+  let loginSwitch = NSSwitch()
   var history: [Double] = []
   var timer: Timer?
 
@@ -89,8 +90,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let mi = NSMenuItem(); mi.view = panel
     menu.addItem(mi)
     menu.addItem(.separator())
-    let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin(_:)), keyEquivalent: "")
-    login.target = self
+    let row = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
+    let label = NSTextField(labelWithString: "Launch at Login")
+    label.font = .systemFont(ofSize: 13); label.frame = NSRect(x: 14, y: 7, width: 160, height: 17)
+    loginSwitch.controlSize = .small; loginSwitch.sizeToFit()
+    loginSwitch.frame.origin = CGPoint(x: 260 - 14 - loginSwitch.frame.width, y: (30 - loginSwitch.frame.height) / 2)
+    loginSwitch.target = self; loginSwitch.action = #selector(toggleLogin(_:))
+    row.addSubview(label); row.addSubview(loginSwitch)
+    let login = NSMenuItem(); login.view = row
     menu.addItem(login)
     menu.delegate = self
     menu.addItem(NSMenuItem(title: "Quit TempBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -101,15 +108,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     RunLoop.main.add(timer!, forMode: .common)  // keep ticking while menu is open
   }
 
-  @objc func toggleLogin(_ sender: NSMenuItem) {
+  @objc func toggleLogin(_ sender: NSSwitch) {
     do {
-      if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
-      else { try SMAppService.mainApp.register() }
-    } catch { NSSound.beep() }
+      if sender.state == .on { try SMAppService.mainApp.register() }
+      else { try SMAppService.mainApp.unregister() }
+    } catch { NSSound.beep(); sender.state = SMAppService.mainApp.status == .enabled ? .on : .off }
   }
 
   func menuNeedsUpdate(_ menu: NSMenu) {
-    menu.items.first { $0.title == "Launch at Login" }?.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    loginSwitch.state = SMAppService.mainApp.status == .enabled ? .on : .off
   }
 
   func refresh() {
