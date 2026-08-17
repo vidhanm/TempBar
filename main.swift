@@ -3,6 +3,8 @@ import AppKit
 final class Panel: NSView {
   var history: [Double] = []
   var summary: Summary?
+  var cpu: Double?
+  var mem: (used: Double, total: Double)?
   let cap = 100
   override func draw(_ r: NSRect) {
     let W = bounds.width
@@ -74,6 +76,15 @@ final class Panel: NSView {
     }
     if let b = s.battery { kv("Battery", b) }
     if let d = s.ssd { kv("SSD", d) }
+    // right-aligned: CPU / RAM
+    var parts: [(String, String)] = []
+    if let c = cpu { parts.append(("CPU", String(format: "%.0f%%", c))) }
+    if let m = mem { parts.append(("RAM", String(format: "%.1f GB", m.used))) }
+    var rx = W - 14
+    for (k, v) in parts.reversed() {
+      text(v, rx, 5, bold, txt, right: true); rx -= (v as NSString).size(withAttributes: [.font: bold]).width + 4
+      text(k, rx, 6, small, dim, right: true); rx -= (k as NSString).size(withAttributes: [.font: small]).width + 14
+    }
   }
 }
 
@@ -97,7 +108,7 @@ final class Toggle: NSView {
 final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   let menu = NSMenu()
-  let panel = Panel(frame: NSRect(x: 0, y: 0, width: 260, height: 168))
+  let panel = Panel(frame: NSRect(x: 0, y: 0, width: 300, height: 168))
   let loginSwitch = Toggle(frame: NSRect(x: 0, y: 0, width: 38, height: 22))
   let loginLabel = NSTextField(labelWithString: "Launch at Login")
   var history: [Double] = []
@@ -118,7 +129,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     menu.delegate = self
     menu.addItem(NSMenuItem(title: "Quit TempBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     item.menu = menu
-    syncLoginUI()
     refresh()
     timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.refresh() }
     timer?.tolerance = 1
@@ -127,10 +137,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   // Login item handled via System Events (same list System Settings shows).
   // SMAppService.status is unreliable for ad-hoc signed apps, so we use the visible list as the source of truth.
+  // Run via osascript subprocess: NSAppleScript in-process loads OSA frameworks and leaves ~20 MB of
+  // fragmented heap behind, tripling our footprint. A child process takes that hit and dies.
   func runAS(_ src: String) -> String? {
-    var err: NSDictionary?
-    let out = NSAppleScript(source: src)?.executeAndReturnError(&err)
-    return err == nil ? (out?.stringValue ?? "") : nil
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    p.arguments = ["-e", src]
+    let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
+    do { try p.run() } catch { return nil }
+    let data = out.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
+    guard p.terminationStatus == 0 else { return nil }
+    return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
   }
   var loginEnabled: Bool {
     runAS(#"tell application "System Events" to return (name of every login item) contains "TempBar""#) == "true"
@@ -152,7 +168,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   func refresh() {
     guard let s = Summary.current() else { item.button?.title = "--°"; return }
     history.append(s.socMax); if history.count > 100 { history.removeFirst() }
-    panel.history = history; panel.summary = s; panel.needsDisplay = true
+    panel.history = history; panel.summary = s; panel.cpu = Usage.cpu(); panel.mem = Usage.memory(); panel.needsDisplay = true
     let color: NSColor = s.socMax >= 90 ? .systemRed : s.socMax >= 75 ? .systemOrange : .labelColor
     item.button?.attributedTitle = NSAttributedString(
       string: String(format: "%.0f°", s.socMax),
