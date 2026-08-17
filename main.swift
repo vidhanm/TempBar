@@ -83,6 +83,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   let menu = NSMenu()
   let panel = Panel(frame: NSRect(x: 0, y: 0, width: 260, height: 168))
   let loginSwitch = NSSwitch()
+  let loginLabel = NSTextField(labelWithString: "Launch at Login")
   var history: [Double] = []
   var timer: Timer?
 
@@ -91,8 +92,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     menu.addItem(mi)
     menu.addItem(.separator())
     let row = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
-    let label = NSTextField(labelWithString: "Launch at Login")
-    label.font = .systemFont(ofSize: 13); label.frame = NSRect(x: 14, y: 7, width: 160, height: 17)
+    let label = loginLabel
+    label.font = .systemFont(ofSize: 13); label.frame = NSRect(x: 14, y: 7, width: 190, height: 17)
     loginSwitch.controlSize = .small; loginSwitch.sizeToFit()
     loginSwitch.frame.origin = CGPoint(x: 260 - 14 - loginSwitch.frame.width, y: (30 - loginSwitch.frame.height) / 2)
     loginSwitch.target = self; loginSwitch.action = #selector(toggleLogin(_:))
@@ -112,12 +113,18 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     do {
       if sender.state == .on { try SMAppService.mainApp.register() }
       else { try SMAppService.mainApp.unregister() }
-    } catch { NSSound.beep(); sender.state = SMAppService.mainApp.status == .enabled ? .on : .off }
+    } catch { NSSound.beep() }
+    syncLoginUI()
+    if SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
   }
 
-  func menuNeedsUpdate(_ menu: NSMenu) {
-    loginSwitch.state = SMAppService.mainApp.status == .enabled ? .on : .off
+  func syncLoginUI() {
+    let st = SMAppService.mainApp.status
+    loginSwitch.state = (st == .enabled || st == .requiresApproval) ? .on : .off
+    loginLabel.stringValue = st == .requiresApproval ? "Launch at Login (approve in Settings)" : "Launch at Login"
   }
+
+  func menuNeedsUpdate(_ menu: NSMenu) { syncLoginUI() }
 
   func refresh() {
     guard let s = Summary.current() else { item.button?.title = "--°"; return }
