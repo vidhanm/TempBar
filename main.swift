@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 
 final class Panel: NSView {
   var history: [Double] = []
@@ -77,7 +78,7 @@ final class Panel: NSView {
   }
 }
 
-final class App: NSObject, NSApplicationDelegate {
+final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
   let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   let menu = NSMenu()
   let panel = Panel(frame: NSRect(x: 0, y: 0, width: 260, height: 168))
@@ -88,12 +89,27 @@ final class App: NSObject, NSApplicationDelegate {
     let mi = NSMenuItem(); mi.view = panel
     menu.addItem(mi)
     menu.addItem(.separator())
+    let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin(_:)), keyEquivalent: "")
+    login.target = self
+    menu.addItem(login)
+    menu.delegate = self
     menu.addItem(NSMenuItem(title: "Quit TempBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     item.menu = menu
     refresh()
     timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in self?.refresh() }
     timer?.tolerance = 1
     RunLoop.main.add(timer!, forMode: .common)  // keep ticking while menu is open
+  }
+
+  @objc func toggleLogin(_ sender: NSMenuItem) {
+    do {
+      if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
+      else { try SMAppService.mainApp.register() }
+    } catch { NSSound.beep() }
+  }
+
+  func menuNeedsUpdate(_ menu: NSMenu) {
+    menu.items.first { $0.title == "Launch at Login" }?.state = SMAppService.mainApp.status == .enabled ? .on : .off
   }
 
   func refresh() {

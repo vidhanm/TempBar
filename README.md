@@ -23,6 +23,7 @@ I wanted to see my MacBook's temperature in the menu bar without installing a fu
 - Dropdown with average / low / high over the last 5 minutes
 - Live sparkline chart with temperature and time axes (keeps updating while open)
 - Battery and SSD temperatures
+- Launch‑at‑login toggle in the dropdown
 - No dependencies, no background services — just one small `.app`
 
 ## Install
@@ -37,11 +38,7 @@ cp -R TempBar.app /Applications/
 open /Applications/TempBar.app
 ```
 
-To start it at login: **System Settings → General → Login Items → +** and pick TempBar, or run:
-
-```sh
-osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/TempBar.app", hidden:true}'
-```
+To start it automatically, click the temperature in the menu bar and tick **Launch at Login**.
 
 ## Notes on Apple Silicon sensors
 

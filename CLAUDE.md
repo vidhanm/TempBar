@@ -11,7 +11,7 @@ Tiny macOS menu bar app showing SoC temperature with a live 5‑minute chart. Pu
 ## Workflow
 - Build + install + relaunch:
   `./build.sh && pkill -x TempBar; rm -rf /Applications/TempBar.app && cp -R TempBar.app /Applications/ && open /Applications/TempBar.app`
-- App is a Login Item and lives in `/Applications`.
+- App lives in `/Applications`; "Launch at Login" toggle in the dropdown uses `SMAppService.mainApp` (state shown as checkmark, read on menu open).
 - Sensor probing/reading needs to run outside the sandbox.
 
 ## Facts learned
